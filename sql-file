@@ -1,0 +1,172 @@
+#The top 5 products by order quantity in the year 2017.
+
+WITH CTE AS
+(
+SELECT DISTINCT
+EXTRACT(year FROM o.order_date) year,
+i.product_id,
+p.product_name,
+c.category_name,
+b.brand_name,
+p.model_year,
+SUM(i.list_price * (1 - i.discount)* i.quantity) OVER (PARTITION BY i.product_id ORDER BY EXTRACT(year FROM o.order_date)) total_sale,
+COUNT(o.order_id) OVER (PARTITION BY i.product_id ORDER BY EXTRACT(year FROM o.order_date)) order_count,
+FROM `project-phuongnhi-2024.k293.orders` o
+JOIN `project-phuongnhi-2024.k293.order_items` i
+ON o.order_id = i.order_id
+JOIN `project-phuongnhi-2024.k293.products` p
+ON i.product_id = p.product_id
+JOIN `project-phuongnhi-2024.k293.brands`b
+ON p.brand_id = b.brand_id
+JOIN `project-phuongnhi-2024.k293.categories` c
+ON p.category_id = c.category_id
+WHERE EXTRACT(year FROM o.order_date) = 2017
+),ctr AS
+(
+SELECT *,DENSE_RANK() OVER(PARTITION BY cte.year ORDER BY cte.order_count DESC) order_rank,
+FROM cte
+)
+SELECT product_id,
+product_name,
+category_name,
+brand_name,
+model_year,
+total_sale,
+order_count,
+order_rank
+FROM ctr
+WHERE order_rank <= 5
+ORDER BY order_rank ASC, total_sale DESC
+
+#Calculate the month-over-month difference in total revenue.
+
+WITH cte AS
+(
+SELECT DISTINCT
+EXTRACT(month FROM o.order_date) month,
+EXTRACT(year FROM o.order_date) year,
+FORMAT_DATE('%B, %Y',o.order_date) month_year,
+ROUND(SUM(i.list_price * (1 - i.discount)* i.quantity)OVER(PARTITION BY DATE_TRUNC(o.order_date,month) ORDER BY DATE_TRUNC(o.order_date,month)),2) current_sale,
+FROM `project-phuongnhi-2024.k293.orders`o
+JOIN`project-phuongnhi-2024.k293.order_items` i
+ON o.order_id = i.order_id
+)
+SELECT month_year,
+current_sale,
+previous_sale,
+ABS(ROUND((current_sale-previous_sale),2)) as cur_pre_sale_diff
+FROM
+(SELECT *,
+COALESCE(LAG(current_sale) OVER(ORDER BY year,month),0) previous_sale
+FROM cte)
+ORDER BY year, month
+
+#Customer segmentation based on order quantity, total spending, and recent purchase date.
+Customers with more than 1 total order are classified as "repeat buyers", otherwise they are "one-time buyers".
+Customers whose last purchase date is less than 90 days from '2018-12-29' are classified as "recent buyers", otherwise they are "not recent buyers".
+Customers whose total spending is greater than or equal to 65% of the customer with the highest total spending are classified as "big spenders", if it is less than or equal to 30%, they are classified as "low spenders", otherwise they are "average spenders".
+The results are sorted by customer ID in ascending order.
+
+WITH cte AS
+(
+SELECT DISTINCT
+o.customer_id,
+c.first_name,
+c.last_name,
+COUNT(o.order_id) OVER(PARTITION BY o.customer_id) order_count,
+DATE_DIFF('2018-12-29',Max(o.order_date) OVER(PARTITION BY o.customer_id),DAY) days,
+SUM(i.quantity*i.list_price*(1-i.discount)) OVER(PARTITION BY o.customer_id ) total_rev
+FROM `project-phuongnhi-2024.k293.orders` o
+JOIN `project-phuongnhi-2024.k293.order_items` i
+ON o.order_id=i.order_id
+JOIN `project-phuongnhi-2024.k293.customers` c
+ON o.customer_id = c.customer_id
+),ctr AS
+(
+SELECT max(total_rev) max_rev
+FROM cte
+)
+SELECT
+cte.customer_id,
+cte.first_name,
+cte.last_name,
+CASE
+  WHEN order_count >1 THEN 'repeat buyer'
+  ELSE 'one-time buyer'
+END AS purchase_frequency,
+CASE
+  WHEN days < 90 THEN 'recent buyer'
+  ELSE 'not recent buyer'
+END AS purchase_recency,
+CASE
+  WHEN (total_rev*100/max_rev) >= 65 THEN 'big spender'
+  WHEN (total_rev*100/max_rev) <= 30 THEN 'low spender'
+  ELSE 'average spender'
+END AS buying_power
+FROM cte
+CROSS JOIN ctr
+ORDER BY customer_id
+
+#Calculate the number of new and existing customers for each quarter of every year. Sort the results by ascending time.
+For instance, in Q4 2016, a customer who made their first purchase on "2016-10-20" is counted as a new customer for Q4 2016.
+A customer who made their first purchase on "2016-07-20" is considered an existing customer in Q4 2016, even though their initial purchase was in Q3 2016.
+
+WITH quarter AS
+  (
+    SELECT
+      C.customer_id AS customer,
+      O.order_date AS order_date,
+      FORMAT_DATE ('%Y-Q%Q',O.order_date) AS quarter_year,
+      MIN (DATE_TRUNC(O.order_date,QUARTER)) OVER (PARTITION BY C.customer_id) AS min_quar
+    FROM `project-phuongnhi-2024.k293.customers` C
+    JOIN `project-phuongnhi-2024.k293.orders` O
+    ON C.customer_id = O.customer_id
+  ),
+new_exist AS
+  (
+    SELECT
+      customer,
+      quarter_year,
+      CASE
+        WHEN DATE_TRUNC(order_date,QUARTER) = min_quar THEN 'new_customer'
+        ELSE 'existing_customer'
+      END AS customer_type
+    FROM quarter
+  ),
+customer_count AS
+  (
+    SELECT
+      quarter_year,
+      COUNT(DISTINCT customer) AS total_customer,
+      COUNT(DISTINCT IF(customer_type='new_customer',customer,NULL)) AS new_customer,
+      COUNT(DISTINCT IF(customer_type='existing_customer',customer,NULL)) AS existing_customer
+    FROM new_exist
+    GROUP BY quarter_year
+  )
+SELECT
+  quarter_year,
+  total_customer,
+  new_customer,
+  CONCAT(ROUND((new_customer/total_customer)*100,2),'%') AS new_customer_percent,
+  existing_customer,
+  CONCAT(ROUND((existing_customer/total_customer)*100,2),'%') AS existing_customer_percent
+FROM customer_count
+ORDER BY quarter_year
+
+#Find out which products are often bought together in the same order, and how many times these products have been purchased together.
+
+WITH cte AS
+(
+  SELECT  i.order_id,i.product_id,p.product_name
+  FROM `project-phuongnhi-2024.k293.order_items` i
+  JOIN `project-phuongnhi-2024.k293.products` p
+  ON i.product_id=p.product_id
+)
+SELECT a.product_name product_a,b.product_name product_b,
+COUNT( DISTINCT a.order_id) co_purchase_count
+FROM cte a
+JOIN cte b
+ON a.order_id = b.order_id
+AND a.product_id < b.product_id AND a.product_id <> b.product_id
+GROUP BY a.product_name,b.product_name
+ORDER BY co_purchase_count DESC
