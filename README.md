@@ -29,4 +29,4 @@ Optimize marketing strategy: Adjust marketing campaigns to target specific custo
 Improve customer experience: Suggest related products to increase order value.
 Develop promotional programs: Create attractive promotions based on customer purchase behavior.
 
-Tools Used: Google BigQuery, LookerStudio
+Tools Used: Google BigQuery
