@@ -30,6 +30,7 @@ Improve customer experience: Suggest related products to increase order value.
 Develop promotional programs: Create attractive promotions based on customer purchase behavior.
 
 **Table Explanation:**
+
 <img width="624" alt="ERD   Table Explanation" src="https://github.com/user-attachments/assets/b3ab9545-a6df-4797-bb3a-f71fcffb0ee5">
 
 Tools Used: Google BigQuery
