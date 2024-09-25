@@ -10,7 +10,7 @@
 **Key Analysis:**
 + Top 5 best-selling products: Rank products by order quantity or total revenue.
 + Time-series analysis:
-Compare sales between months, quarters, years.
+Compare sales between months, quarters, and years.
 Identify peak and off-peak months.
 Analyze the growth or decline trend of sales.
 + Customer segmentation:
@@ -22,11 +22,14 @@ Calculate customer retention rate.
 + Basket analysis:
 Identify product pairs that are frequently purchased together.
 Calculate the number of times these product pairs are purchased together.
-Expected Outcomes:
 
+**Expected Outcome:**
 Product recommendations: Suggest products to focus on or discontinue.
 Optimize marketing strategy: Adjust marketing campaigns to target specific customer segments.
 Improve customer experience: Suggest related products to increase order value.
 Develop promotional programs: Create attractive promotions based on customer purchase behavior.
+
+**Table Explanation:**
+<img width="624" alt="ERD   Table Explanation" src="https://github.com/user-attachments/assets/b3ab9545-a6df-4797-bb3a-f71fcffb0ee5">
 
 Tools Used: Google BigQuery
